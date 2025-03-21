@@ -1,0 +1,18 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - python3
+  - python3-pip
+
+runcmd:
+  - pip3 install flask
+  - echo 'from flask import Flask' > /home/dasilv-k/app.py
+  - echo 'app = Flask(__name__)' >> /home/dasilv-k/app.py
+  - echo '@app.route("/")' >> /home/dasilv-k/app.py
+  - echo 'def hello():' >> /home/dasilv-k/app.py
+  - echo '    return "Hello from Flask!"' >> /home/dasilv-k/app.py
+  - echo 'if __name__ == "__main__":' >> /home/dasilv-k/app.py
+  - echo '    app.run(host="0.0.0.0", port=5000)' >> /home/dasilv-k/app.py
+  - nohup python3 /home/dasilv-k/app.py > /home/dasilv-k/flask.log 2>&1 &
+  - python3 app.py
