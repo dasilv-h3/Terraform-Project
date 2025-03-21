@@ -17,3 +17,13 @@ variable "vm_size" {
     description = "Taille de la VM"
     default     = "Standard_B1s"
 }
+
+variable "db_username" {
+    type    = string
+    default = "postgresql"
+}
+
+variable "db_password" {
+    type    = string
+    default = "admin123"
+}

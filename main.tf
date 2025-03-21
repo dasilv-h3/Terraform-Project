@@ -98,3 +98,13 @@ resource "azurerm_linux_virtual_machine" "vm" {
 
     custom_data = filebase64("cloud-init.yaml")
 }
+
+resource "azurerm_postgresql_flexible_server" "db" {
+    name                   = "flaskdb"
+    resource_group_name    = azurerm_resource_group.rg.name
+    location               = "West Europe"
+    administrator_login    = var.db_username
+    administrator_password = var.db_password
+    sku_name               = "B_Standard_B1ms"
+    version                = "13"
+}
