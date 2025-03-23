@@ -72,12 +72,14 @@ resource "azurerm_network_security_rule" "allow_5000" {
 }
 
 resource "azurerm_linux_virtual_machine" "vm" {
-    name                = "${var.prefix}-vm"
-    resource_group_name = azurerm_resource_group.rg.name
-    location            = azurerm_resource_group.rg.location
-    size               = var.vm_size
-    admin_username     = var.admin_username
+    name                  = "${var.prefix}-vm"
+    resource_group_name   = azurerm_resource_group.rg.name
+    location              = azurerm_resource_group.rg.location
+    size                  = var.vm_size
+    admin_username        = var.admin_username
+    admin_password        = var.admin_password
     network_interface_ids = [azurerm_network_interface.nic.id]
+    disable_password_authentication = false
 
     os_disk {
         caching              = "ReadWrite"
@@ -90,21 +92,76 @@ resource "azurerm_linux_virtual_machine" "vm" {
         sku       = "18.04-LTS"
         version   = "latest"
     }
-
-    admin_ssh_key {
-        username   = var.admin_username
-        public_key = file("~/.ssh/id_rsa.pub")
-    }
-
-    custom_data = filebase64("cloud-init.yaml")
 }
 
-resource "azurerm_postgresql_flexible_server" "db" {
-    name                   = "flaskdb"
-    resource_group_name    = azurerm_resource_group.rg.name
-    location               = "West Europe"
-    administrator_login    = var.db_username
-    administrator_password = var.db_password
-    sku_name               = "B_Standard_B1ms"
-    version                = "13"
+resource "time_sleep" "wait_for_ip" {
+    depends_on = [azurerm_public_ip.public_ip]
+
+    create_duration = "30s"
+}
+
+resource "null_resource" "provision_vm" {
+    depends_on = [azurerm_linux_virtual_machine.vm, time_sleep.wait_for_ip]
+
+    provisioner "file" {
+        source      = "./${var.folder_app_name}"
+        destination = "/home/${var.admin_username}/${var.folder_app_name}"
+
+        connection {
+            type        = "ssh"
+            user        = var.admin_username
+            password    = var.admin_password
+            host        = azurerm_public_ip.public_ip.ip_address
+            agent       = false
+        }
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "echo 'VM prête, début des installations'",
+            "sudo apt update && apt upgrade -y",
+            "sudo apt install -y libpq-dev python3-pip python3.8",
+            "python3 -m pip install --upgrade pip",
+            "sudo chmod -R 755 /home/${var.admin_username}/${var.folder_app_name}",
+            "cd ${var.folder_app_name} && pip3 install -r requirements.txt",
+            "python3 app.py"
+        ]
+
+        connection {
+            type        = "ssh"
+            user        = var.admin_username
+            password    = var.admin_password
+            host        = azurerm_public_ip.public_ip.ip_address
+            agent       = false
+        }
+    }
+}
+
+resource "azurerm_postgresql_server" "db_server" {
+    name                             = "flask-db-server"
+    resource_group_name              = azurerm_resource_group.rg.name
+    location                         = azurerm_resource_group.rg.location
+    sku_name                         = "B_Gen5_1"
+    storage_mb                       = 5120
+    version                          = "11"
+    administrator_login              = var.db_username
+    administrator_login_password     = var.db_password
+    ssl_enforcement_enabled          = false
+    ssl_minimal_tls_version_enforced = "TLSEnforcementDisabled"
+}
+
+resource "azurerm_postgresql_firewall_rule" "allow_my_server" {
+    name                = "AllowMyServer"
+    resource_group_name = azurerm_resource_group.rg.name
+    server_name         = azurerm_postgresql_server.db_server.name
+    start_ip_address    = azurerm_public_ip.public_ip.ip_address
+    end_ip_address      = azurerm_public_ip.public_ip.ip_address
+}
+
+resource "azurerm_postgresql_database" "flaskdb" {
+    name                = "flaskdb"
+    resource_group_name = azurerm_resource_group.rg.name
+    server_name         = azurerm_postgresql_server.db_server.name
+    charset            = "UTF8"
+    collation          = "English_United States.1252"
 }

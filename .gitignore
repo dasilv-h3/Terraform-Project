@@ -45,3 +45,4 @@ terraform.rc
 # Ignore local development files
 *.log
 .DS_Store 
+venv/
